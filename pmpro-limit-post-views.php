@@ -3,7 +3,6 @@
 Plugin Name: PMPro Limit Post Views
 Plugin URI: http://www.paidmembershipspro.com/wp/pmpro-limit-post-views/
 Description: Integrates with Paid Memberships Pro to limit the number of times non-members can view posts on your site.
-	     This fork doesn't count the views, but the unique views of posts.
 Version: .2
 Author: Stranger Studios
 Author URI: http://www.strangerstudios.com
@@ -12,10 +11,10 @@ Author URI: http://www.strangerstudios.com
 	The Plan
 	- Track a cookie on the user's computer.
 	- Only track on pages the user doesn't have access to.
-	- Allow up to X views without a membership level.
-	- On (X+1)th view each month, redirect to a specific page to get them to sign up.
+	- Allow up to 4 views without a membership level.
+	- On 4th view each month, redirect to a specific page to get them to sign up.
 */
-define('PMPRO_LPV_LIMIT', 3);			//<-- how many posts can a user view per month
+define('PMPRO_LPV_LIMIT', 2);			//<-- how many posts can a user view per month
 define('PMPRO_LPV_USE_JAVASCRIPT', false);
 
 //php limit (deactivate JS version below if you use this)
@@ -74,16 +73,8 @@ function pmpro_lpv_wp()
 
 			$count = count($post_ids);
 			
-			//if count is above limit, redirect, otherwise update cookie
-			if($count > PMPRO_LPV_LIMIT)
-			{
-				if(function_exists("pmpro_url"))
-				{
-					wp_redirect(pmpro_url("levels"));	//here is where you can change which page is redirected to
-					exit;
-				}
-			}
-			else
+			//if count is not above limit, allow access and update cookie
+			if($count <= PMPRO_LPV_LIMIT)
 			{
 				//give them access and track the view
 				add_filter("pmpro_has_membership_access_filter", "__return_true");
@@ -154,9 +145,7 @@ function pmpro_lpv_wp_footer()
 		//if count is above limit, redirect, otherwise update cookie
 		if(count > <?php echo intval(PMPRO_LPV_LIMIT); ?>)
 		{
-			<?php if(function_exists("pmpro_url")) { ?>
-				window.location.replace('<?php echo pmpro_url("levels");?>');				
-			<?php } ?>
+			window.location.replace('<?php echo pmpro_url("levels");?>');				
 		}
 		else
 		{
