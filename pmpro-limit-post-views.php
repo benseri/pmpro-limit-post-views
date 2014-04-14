@@ -3,6 +3,7 @@
 Plugin Name: PMPro Limit Post Views
 Plugin URI: http://www.paidmembershipspro.com/wp/pmpro-limit-post-views/
 Description: Integrates with Paid Memberships Pro to limit the number of times non-members can view posts on your site.
+	     This fork doesn't count the views, but the unique views of posts.
 Version: .2
 Author: Stranger Studios
 Author URI: http://www.strangerstudios.com
@@ -11,8 +12,8 @@ Author URI: http://www.strangerstudios.com
 	The Plan
 	- Track a cookie on the user's computer.
 	- Only track on pages the user doesn't have access to.
-	- Allow up to 4 views without a membership level.
-	- On 4th view each month, redirect to a specific page to get them to sign up.
+	- Allow up to X views without a membership level.
+	- On (X+1)th view each month, redirect to a specific page to get them to sign up.
 */
 define('PMPRO_LPV_LIMIT', 3);			//<-- how many posts can a user view per month
 define('PMPRO_LPV_USE_JAVASCRIPT', false);
@@ -30,7 +31,7 @@ function pmpro_lpv_wp()
 		if(!pmpro_has_membership_access())
 		{
 			//ignore non-posts
-			global $post;			
+			global $post;	
 			if($post->post_type != "post")
 				return;
 			
@@ -47,36 +48,46 @@ function pmpro_lpv_wp()
 			$thismonth = date("n");
 		
 			//check for past views
-			if(!empty($_COOKIE['pmpro_lpv_count']))
+			if(!empty($_COOKIE['pmpro_lpv_ids']))
 			{
-				$parts = explode(",", $_COOKIE['pmpro_lpv_count']);				
-				$month = $parts[1];
+				$parts = explode(",", $_COOKIE['pmpro_lpv_ids']);				
+				$month = $parts[0];
+				$post_ids = array_slice($parts, 1);
 				if($month == $thismonth)
-					$count = intval($parts[0])+1;	//same month as other views
+				{
+					if (!in_array(strval($post->ID), $post_ids)) {
+						array_push($post_ids, strval($post->ID));
+					}
+				}
 				else
 				{
-					$count = 1;						//new month
+					$post_ids = array($post->ID);
 					$month = $thismonth;
 				}				
 			}
 			else
 			{
 				//new user
-				$count = 1;
+				$post_ids = array($post->ID);
 				$month = $thismonth;
 			}
-				
+
+			$count = count($post_ids);
+			
 			//if count is above limit, redirect, otherwise update cookie
 			if($count > PMPRO_LPV_LIMIT)
 			{
-				wp_redirect(home_url("paywall"));	//here is where you can change which page is redirected to
-				exit;
+				if(function_exists("pmpro_url"))
+				{
+					wp_redirect(pmpro_url("levels"));	//here is where you can change which page is redirected to
+					exit;
+				}
 			}
 			else
 			{
 				//give them access and track the view
 				add_filter("pmpro_has_membership_access_filter", "__return_true");
-				setcookie("pmpro_lpv_count", $count . "," . $month, time()+3600*24*31, "/");				
+				setcookie("pmpro_lpv_ids", $month . "," . implode(",", $post_ids), time()+3600*24*31, "/");
 			}
 		}				
 	}
@@ -90,48 +101,67 @@ function pmpro_lpv_wp_footer()
 {	
 	?>
 	<script>		
+		function inArray(needle, haystack) {
+			var length = haystack.length;
+			for(var i = 0; i < length; i++) {
+				if(haystack[i] == needle) return true;
+			}
+			return false;
+		}
 		//vars
-		var pmpro_lpv_count;		//stores cookie
+		var pmpro_lpv_ids_cookie;	//stores cookie
 		var parts;					//cookie convert to array of 2 parts
-		var count;					//part 0 is the view count
-		var month;					//part 1 is the month
+		var count;					
+		var month;					//part 0 is the month
+		var post_ids;				//part 1 is the viewed ids		
 		
 		//what is the current month?
 		var d = new Date();
 		var thismonth = d.getMonth();
 		
 		//get cookie
-		pmpro_lpv_count = wpCookies.get('pmpro_lpv_count');
+		pmpro_lpv_ids_cookie = wpCookies.get('pmpro_lpv_ids');
 		
-		if(pmpro_lpv_count)
+		if(pmpro_lpv_ids_cookie)
 		{
 			//get values from cookie
-			parts = pmpro_lpv_count.split(',');
-			month = parts[1];
+			parts = pmpro_lpv_ids_cookie.split(',');
+			month = parts[0];
+			post_ids = parts.slice(1);
+			post_id = String(<?php echo $post->ID; ?>);
+			
 			if(month == thismonth)
-				count = parseInt(parts[0])+1;	//same month as other views
+			{
+				if (!inArray(post_id, post_ids)) {
+						post_ids.push(post_id);
+				}
+			}
 			else
 			{
-				count = 1;						//new month
+				post_ids = [post_id];
 				month = thismonth;
 			}	
 		}
 		else
 		{
 			//defaults
-			count = 1;
+			post_ids = [post_id];
 			month = thismonth;
 		}				
+		
+		count = post_ids.length;
 		
 		//if count is above limit, redirect, otherwise update cookie
 		if(count > <?php echo intval(PMPRO_LPV_LIMIT); ?>)
 		{
-			window.location.replace('<?php echo home_url("paywall");?>');				
+			<?php if(function_exists("pmpro_url")) { ?>
+				window.location.replace('<?php echo pmpro_url("levels");?>');				
+			<?php } ?>
 		}
 		else
 		{
 			//track the view
-			wpCookies.set('pmpro_lpv_count', String(count) + ',' + String(month), 3600*24*60, '/');				
+			wpCookies.set('pmpro_lpv_ids', String(month) + ',' + pmpro_lpv_ids.join(',') , 3600*24*60, '/');				
 		}
 	</script>
 	<?php
